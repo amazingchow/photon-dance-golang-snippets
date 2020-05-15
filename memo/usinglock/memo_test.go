@@ -25,11 +25,11 @@ func TestMemo(t *testing.T) {
 
 	memo := New(httpGetBody)
 	urls := []string{
-		"https://github.com/summychou/go-snippet/",
-		"https://github.com/summychou/go-snippet/",
-		"https://github.com/summychou/go-snippet/",
-		"https://github.com/summychou/go-snippet/",
-		"https://github.com/summychou/go-snippet/",
+		"https://github.com/amazingchow/go-snippet/",
+		"https://github.com/amazingchow/go-snippet/",
+		"https://github.com/amazingchow/go-snippet/",
+		"https://github.com/amazingchow/go-snippet/",
+		"https://github.com/amazingchow/go-snippet/",
 	}
 
 	var n sync.WaitGroup
