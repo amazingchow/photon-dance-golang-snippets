@@ -24,7 +24,8 @@ type Elector struct {
 
 // ElectorCfg 选主配置
 type ElectorCfg struct {
-	ZKEndpoints []string `json:"zk_endpoints"`
+	ZKEndpoints       []string `json:"zk_endpoints"`
+	ElectionHeartbeat int      `json:"election_heartbeat"`
 }
 
 // NewElector 返回Elector实例.
@@ -36,7 +37,14 @@ func NewElector(cfg *ElectorCfg) *Elector {
 
 // ElectLeader 让participator参与选主.
 func (e *Elector) ElectLeader(participator string) {
-	conn, sessionEv, err := zk.Connect(e.cfg.ZKEndpoints, _ElectionHeartbeat)
+	var heartbeat time.Duration
+	if e.cfg.ElectionHeartbeat > 0 {
+		heartbeat = time.Duration(e.cfg.ElectionHeartbeat) * time.Second
+	} else {
+		heartbeat = _ElectionHeartbeat
+	}
+
+	conn, sessionEv, err := zk.Connect(e.cfg.ZKEndpoints, heartbeat)
 	if err != nil {
 		log.Fatal().Err(err).Str("[participator]", participator).Msgf("failed to connect to zookeeper cluster (%v)", e.cfg.ZKEndpoints)
 	}
