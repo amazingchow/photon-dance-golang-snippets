@@ -20,11 +20,13 @@ func main() {
 		ElectionHeartbeat: 2,
 	}
 	e := electleader.NewElector(cfg)
-	e.ElectLeader("node_03")
+	go e.ElectLeader("node_03")
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+
 	for range sigCh {
-		e.Close() // TODO: 不起作用?
+		e.Close()
+		break
 	}
 }

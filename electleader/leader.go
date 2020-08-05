@@ -116,7 +116,7 @@ ELECT_LOOP:
 	}
 	candidate.Resign()
 	e.conn.Close()
-	<-e.close
+	e.close <- struct{}{}
 }
 
 func (e *Elector) prepare() {
@@ -150,19 +150,6 @@ func (e *Elector) getLeader() string {
 // Close participator主动退出选主.
 func (e *Elector) Close() {
 	close(e.stop)
-CLOSE_LOOP:
-	for {
-		select {
-		case <-e.close:
-			{
-				log.Warn().Str("[participator]", e.participator).Msg("leave")
-				break CLOSE_LOOP
-			}
-		case <-time.After(5 * time.Second):
-			{
-				// TODO: do log
-				break CLOSE_LOOP
-			}
-		}
-	}
+	<-e.close
+	log.Warn().Str("[participator]", e.participator).Msg("leave")
 }
