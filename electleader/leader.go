@@ -19,6 +19,8 @@ const (
 type Elector struct {
 	conn         *zk.Conn
 	participator string
+	close        chan struct{}
+	stop         chan struct{}
 	cfg          *ElectorCfg
 }
 
@@ -31,7 +33,9 @@ type ElectorCfg struct {
 // NewElector 返回Elector实例.
 func NewElector(cfg *ElectorCfg) *Elector {
 	return &Elector{
-		cfg: cfg,
+		close: make(chan struct{}),
+		stop:  make(chan struct{}),
+		cfg:   cfg,
 	}
 }
 
@@ -102,10 +106,17 @@ ELECT_LOOP:
 					}
 				}
 			}
+		case _, ok := <-e.stop:
+			{
+				if !ok {
+					break ELECT_LOOP
+				}
+			}
 		}
 	}
 	candidate.Resign()
 	e.conn.Close()
+	<-e.close
 }
 
 func (e *Elector) prepare() {
@@ -134,4 +145,24 @@ func (e *Elector) getLeader() string {
 	}
 
 	return string(v)
+}
+
+// Close participator主动退出选主.
+func (e *Elector) Close() {
+	close(e.stop)
+CLOSE_LOOP:
+	for {
+		select {
+		case <-e.close:
+			{
+				log.Warn().Str("[participator]", e.participator).Msg("leave")
+				break CLOSE_LOOP
+			}
+		case <-time.After(5 * time.Second):
+			{
+				// TODO: do log
+				break CLOSE_LOOP
+			}
+		}
+	}
 }
