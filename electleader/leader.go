@@ -67,9 +67,12 @@ func (e *Elector) ElectLeader(participator string) {
 ELECT_LOOP:
 	for {
 		select {
-		case ev := <-sessionEv:
+		case ev, ok := <-sessionEv:
 			{
-				if ev.State == zk.StateExpired {
+				if !ok {
+					log.Error().Str("[participator]", e.participator).Msg("election channel has been closed, election will terminate")
+					break ELECT_LOOP
+				} else if ev.State == zk.StateExpired {
 					log.Error().Err(zk.ErrSessionExpired).Str("[participator]", e.participator)
 					break ELECT_LOOP
 				} else if ev.State == zk.StateAuthFailed {
