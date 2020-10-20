@@ -9,18 +9,18 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/amazingchow/snippets-for-gopher/electleader"
+	"github.com/amazingchow/snippets-for-gopher/leaderelect"
 )
 
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
-	cfg := &electleader.ElectorCfg{
+	cfg := &leaderelect.ElectorCfg{
 		ZKEndpoints:       []string{"127.0.0.1:2181", "127.0.0.1:2182", "127.0.0.1:2183"},
 		ElectionHeartbeat: 2,
 	}
-	e := electleader.NewElector(cfg)
-	go e.ElectLeader("node_03")
+	e := leaderelect.NewElector(cfg)
+	go e.ElectLeader("z_node_03")
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)

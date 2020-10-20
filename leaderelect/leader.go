@@ -1,4 +1,4 @@
-package electleader
+package leaderelect
 
 import (
 	"time"

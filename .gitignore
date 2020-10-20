@@ -14,9 +14,9 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-/node_01
-/node_02
-/node_03
+/z_node_01
+/z_node_02
+/z_node_03
 /c_node_01
 /c_node_02
 /c_node_03
