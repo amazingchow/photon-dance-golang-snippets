@@ -11,6 +11,8 @@ github.com/gocql/gocql/internal/streams
 github.com/golang/snappy
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 github.com/hailocab/go-hostpool
+# github.com/juju/ratelimit v1.0.1
+github.com/juju/ratelimit
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
 # github.com/rs/zerolog v1.19.0
