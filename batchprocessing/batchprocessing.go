@@ -40,7 +40,6 @@ type SourceItem struct {
 // BatchedItem 进入批处理队列里待处理的事务单元
 type BatchedItem struct {
 	CreatedTime time.Time
-	Key         string
 	Items       []interface{}
 }
 
@@ -128,12 +127,15 @@ func (bg BatcherGroup) Stat() {
 	log.Info().Msgf("/******************** Stat ********************/")
 	for i, b := range bg {
 		t := b.Stat()
-		log.Info().Msgf("[batcher-%d] processed %d batched requests", i, t)
-		total += t
+		if t > 0 {
+			log.Info().Msgf("[batcher-%d] processed %d batched requests", i, t)
+			total += t
+		}
 	}
 	if total > 0 {
 		log.Info().Msgf("totally processed %d batched requests", total)
 	}
+	log.Info().Msgf("/******************** Stat ********************/")
 }
 
 // NewBatcher 返回NewBatcher实例.
@@ -191,7 +193,7 @@ func (b *Batcher) source() {
 	ticker := time.NewTicker(b.flushInterval)
 	defer ticker.Stop()
 
-	batchedTable := make(map[string]*BatchedItem)
+	batchedTable := make(map[uint32]*BatchedItem)
 BATCHER_LOOP:
 	for {
 		select {
@@ -200,20 +202,21 @@ BATCHER_LOOP:
 				log.Warn().Msgf("batcher-%d's source channel has been closed", b.id)
 				break BATCHER_LOOP
 			}
-			if _, exist := batchedTable[item.key]; !exist {
-				batchedTable[item.key] = &BatchedItem{
+			k := FNV1av32(item.key) % uint32(b.cfg.BatcherConcurrencyNum)
+			if _, exist := batchedTable[k]; !exist {
+				batchedTable[k] = &BatchedItem{
 					CreatedTime: time.Now(),
-					Key:         item.key,
 					Items:       make([]interface{}, 0, b.cfg.MaxBatchedSize),
 				}
 			}
-			batchedTable[item.key] = b.appendItemWithFlushOp(batchedTable[item.key], item)
+			batchedTable[k] = b.appendItemWithFlushOp(batchedTable[k], item)
 		case <-ticker.C:
 			batchedTable = b.flush(batchedTable, false /* flush */)
 		}
 	}
 
 	b.flush(batchedTable, true /* flush */)
+	// TODO: 在退出前, 如何优雅得处理剩下的事务?
 	close(b.batchedQ)
 	log.Warn().Msgf("batcher-%d's source goroutine has been closed", b.id)
 }
@@ -225,7 +228,6 @@ func (b *Batcher) appendItemWithFlushOp(batched *BatchedItem, item *SourceItem) 
 
 		newBatched := BatchedItem{
 			CreatedTime: time.Now(),
-			Key:         batched.Key,
 		}
 		newBatched.Items = batched.Items[:]
 		return &newBatched
@@ -234,7 +236,7 @@ func (b *Batcher) appendItemWithFlushOp(batched *BatchedItem, item *SourceItem) 
 	return batched
 }
 
-func (b *Batcher) flush(batchedTable map[string]*BatchedItem, flush bool) map[string]*BatchedItem {
+func (b *Batcher) flush(batchedTable map[uint32]*BatchedItem, flush bool) map[uint32]*BatchedItem {
 	now := time.Now()
 	for key, batched := range batchedTable {
 		if batched != nil && len(batched.Items) > 0 &&

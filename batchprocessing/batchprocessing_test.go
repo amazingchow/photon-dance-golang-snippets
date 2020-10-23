@@ -40,5 +40,6 @@ func TestBatcherGroup(t *testing.T) {
 
 	time.Sleep(5)
 
+	bg.Stat()
 	bg.Close()
 }
