@@ -10,6 +10,8 @@ github.com/eapache/go-resiliency/breaker
 github.com/eapache/go-xerial-snappy
 # github.com/eapache/queue v1.1.0
 github.com/eapache/queue
+# github.com/gammazero/deque v0.0.0-20201010052221-3932da5530cc
+github.com/gammazero/deque
 # github.com/gocql/gocql v0.0.0-20200926162733-393f0c961220
 github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
