@@ -36,7 +36,7 @@ func (q *CapLimitQueue) Push(elem interface{}) {
 
 	q.q.PushBack(elem)
 	// (2) 通知消费goroutine已有数据对象进队列 -> (3)
-	q.cond.Signal()
+	q.cond.Broadcast()
 }
 
 // Pop 从限容队列取出数据对象.
@@ -56,7 +56,7 @@ func (q *CapLimitQueue) Pop(want int) []interface{} {
 		output[i] = q.q.PopFront()
 	}
 	// (4) 通知生产goroutine已有数据对象出队列 -> (1)
-	q.cond.Signal()
+	q.cond.Broadcast()
 
 	return output
 }
