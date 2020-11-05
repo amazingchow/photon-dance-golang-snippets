@@ -2,6 +2,9 @@
 github.com/Comcast/go-leaderelection
 # github.com/Shopify/sarama v1.27.2
 github.com/Shopify/sarama
+# github.com/allegro/bigcache v1.2.1
+github.com/allegro/bigcache
+github.com/allegro/bigcache/queue
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/eapache/go-resiliency v1.2.0
