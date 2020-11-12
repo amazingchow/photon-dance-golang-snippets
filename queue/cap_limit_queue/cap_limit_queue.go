@@ -25,7 +25,7 @@ func NewCapLimitQueue(cap int) *CapLimitQueue {
 	return q
 }
 
-// Push 往限容队列添加数据对象.
+// Push 往限容队列添加数据对象(并发安全).
 func (q *CapLimitQueue) Push(elem interface{}) {
 	q.cond.L.Lock()
 	for q.q.Len() >= q.cap {
@@ -39,7 +39,7 @@ func (q *CapLimitQueue) Push(elem interface{}) {
 	q.cond.Broadcast()
 }
 
-// Pop 从限容队列取出数据对象.
+// Pop 从限容队列取出数据对象(并发安全).
 func (q *CapLimitQueue) Pop(want int) []interface{} {
 	q.cond.L.Lock()
 	for q.q.Len() == 0 {
@@ -61,7 +61,7 @@ func (q *CapLimitQueue) Pop(want int) []interface{} {
 	return output
 }
 
-// Len 返回限容队列当前长度.
+// Len 返回限容队列当前长度(并发安全).
 func (q *CapLimitQueue) Len() int {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
