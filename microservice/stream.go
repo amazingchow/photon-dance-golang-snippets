@@ -1,6 +1,8 @@
 package microservice
 
-import "context"
+import (
+	"context"
+)
 
 // AsStream 创建流.
 func AsStream(ctx context.Context, values ...interface{}) <-chan interface{} {
