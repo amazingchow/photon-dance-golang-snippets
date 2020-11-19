@@ -31,6 +31,5 @@ func OrDone(notifyChans ...<-chan interface{}) <-chan interface{} {
 		// 随机选择一个就绪的case
 		reflect.Select(cases)
 	}()
-
 	return orDone
 }
