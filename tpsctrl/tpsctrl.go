@@ -7,34 +7,47 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// TPSController 用于控制事务的处理速度
+// TPSController 用于调控TPS
 type TPSController struct {
-	quotaLimit int
-	bucket     *ratelimit.Bucket
+	quota  int
+	bucket *ratelimit.Bucket
 }
 
 // NewTPSController 返回TPSController实例.
-func NewTPSController(quotalimit int) *TPSController {
-	c := TPSController{}
-	c.quotaLimit = quotalimit
+// Max(TPS) == quota
+func NewTPSController(quota int) *TPSController {
+	ctrl := TPSController{}
+	ctrl.quota = quota
 
-	interval := time.Second / time.Duration(c.quotaLimit)
+	interval := time.Second / time.Duration(ctrl.quota)
 	if interval <= 0 {
 		interval = time.Nanosecond
 	}
-	c.bucket = ratelimit.NewBucket(interval, int64(c.quotaLimit))
+	ctrl.bucket = ratelimit.NewBucket(interval, int64(ctrl.quota))
 
-	return &c
+	return &ctrl
 }
 
-// TPSCtrl 从事务桶中取x个令牌, 如果当前无可用令牌, 等待y秒时间, 直到出现可用令牌.
-func (c *TPSController) TPSCtrl(count int) {
-	if c.bucket == nil {
+// Take 从事务桶中取1个令牌, 如果当前无可用令牌, 等待y秒时间, 直到出现可用令牌.
+func (ctrl *TPSController) Take() {
+	if ctrl.bucket == nil {
 		return
 	}
-	waitUntilAvailable := c.bucket.Take(int64(count))
+	waitUntilAvailable := ctrl.bucket.Take(1)
 	if waitUntilAvailable != 0 {
-		log.Warn().Msgf("tps limit exceeds, wait %s secs until resource turns to be available", waitUntilAvailable.String())
+		log.Warn().Msgf("tps quota limit exceeds, wait %s secs until resource turns to be available", waitUntilAvailable.String())
+		time.Sleep(waitUntilAvailable)
+	}
+}
+
+// TakeX 从事务桶中取x个令牌, 如果当前无可用令牌, 等待y秒时间, 直到出现可用令牌.
+func (ctrl *TPSController) TakeX(x int64) {
+	if ctrl.bucket == nil {
+		return
+	}
+	waitUntilAvailable := ctrl.bucket.Take(x)
+	if waitUntilAvailable != 0 {
+		log.Warn().Msgf("tps quota limit exceeds, wait %s secs until resource turns to be available", waitUntilAvailable.String())
 		time.Sleep(waitUntilAvailable)
 	}
 }

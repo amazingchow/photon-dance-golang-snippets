@@ -8,13 +8,13 @@ import (
 )
 
 func TestLockFreeQueue(t *testing.T) {
-	lkqueue := NewLockFreeQueue()
+	q := NewLockFreeQueue()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func() {
-			lkqueue.Push("Lucy")
+			q.Push("Lucy")
 			wg.Done()
 		}()
 	}
@@ -22,7 +22,7 @@ func TestLockFreeQueue(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
-			if _, ok := lkqueue.Pop(); ok {
+			if _, ok := q.Pop(); ok {
 				successCh <- 1
 			} else {
 				successCh <- 0
@@ -37,7 +37,7 @@ func TestLockFreeQueue(t *testing.T) {
 		for x := range successCh {
 			succ += x
 		}
-		assert.Equal(t, int64(100-succ), lkqueue.Len())
+		assert.Equal(t, int64(100-succ), q.Len())
 		stopCh <- struct{}{}
 	}()
 

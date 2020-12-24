@@ -30,46 +30,55 @@ func NewLockFreeQueue() *LockFreeQueue {
 	}
 }
 
-// Push 往无锁队列添加数据对象(并发安全).
-func (q *LockFreeQueue) Push(elem interface{}) {
-	n := &node{v: elem}
+// Push 往无锁队列中添加数据.
+func (q *LockFreeQueue) Push(x interface{}) {
+	n := &node{v: x}
+
 	for {
 		tail := load(&q.tail)
-		next := load(&tail.next)
-		if tail == load(&q.tail) { // 第一波检查, 尾还是尾
-			if next == nil { // 第二波检查, 其他线程没有插入新数据
-				if cas(&tail.next, next, n) { // 第三波检查, 尝试插入新数据到队尾
-					if cas(&q.tail, tail, n) { // 入队成功, 移动尾指针
+		tnext := load(&tail.next)
+		// 第一波检查, 尾还是尾
+		if tail == load(&q.tail) {
+			// 第二波检查, 确认其他线程没有插入新数据
+			if tnext == nil {
+				// 第三波检查, 尝试插入新数据到队尾
+				if cas(&tail.next, tnext, n) {
+					// 入队成功, 移动尾指针
+					if cas(&q.tail, tail, n) {
 						atomic.AddInt64(&(q.count), 1)
 					}
 					return
 				}
-			} else { // 第二波检查失败, 其他线程已插入新数据, 需要移动尾指针
-				cas(&q.tail, tail, next)
+			} else {
+				// 第二波检查失败, 其他线程已插入新数据, 需要移动尾指针
+				cas(&q.tail, tail, tnext)
 			}
 		}
 	}
 }
 
-// Pop 从无锁队列取出数据对象(并发安全).
+// Pop 从无锁队列内取出数据.
 func (q *LockFreeQueue) Pop() (interface{}, bool) {
 	for {
 		head := load(&q.head)
+		hnext := load(&head.next)
 		tail := load(&q.tail)
-		next := load(&head.next)
-		if head == load(&q.head) { // 第一波检查, 头还是头
-			if head == tail { // 第二波检查, 头和尾重合
-				if next == nil { // 第三波检查, 发现是空队列就直接返回
+		tnext := load(&tail.next)
+		// 第一波检查, 头还是头
+		if head == load(&q.head) {
+			// 第二波检查, 头和尾重合
+			if head == tail {
+				// 第三波检查, 发现是空队列就直接返回
+				if hnext == nil {
 					return nil, false
 				}
 				// 其他线程已插入新数据, 需要移动尾指针
-				cas(&q.tail, tail, next)
+				cas(&q.tail, tail, tnext)
 			} else {
 				// 读取队头数据
-				v := next.v
+				v := hnext.v
 				// 尝试移动头指针, 如果有其他线程取出数据, 则放弃本次尝试
-				if cas(&q.head, head, next) {
-					// next作为队头的dummy node
+				if cas(&q.head, head, hnext) {
 					atomic.AddInt64(&(q.count), -1)
 					return v, true
 				}
@@ -78,7 +87,7 @@ func (q *LockFreeQueue) Pop() (interface{}, bool) {
 	}
 }
 
-// Len 返回无锁队列当前长度(并发安全).
+// Len 返回无锁队列的长度.
 func (q *LockFreeQueue) Len() int64 {
 	return atomic.LoadInt64(&(q.count))
 }
