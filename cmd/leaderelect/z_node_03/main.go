@@ -9,15 +9,15 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/amazingchow/photon-dance-golang-snippets/leaderelect"
+	leaderelect "github.com/amazingchow/photon-dance-golang-snippets/leader-elect"
 )
 
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
 	cfg := &leaderelect.ElectorCfg{
-		ZKEndpoints:       []string{"127.0.0.1:2181", "127.0.0.1:2182", "127.0.0.1:2183"},
-		ElectionHeartbeat: 2,
+		ZkEndpoints: []string{"127.0.0.1:2181", "127.0.0.1:2182", "127.0.0.1:2183"},
+		Heartbeat:   2,
 	}
 	e := leaderelect.NewElector(cfg)
 	go e.ElectLeader("z_node_03")

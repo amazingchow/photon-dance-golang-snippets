@@ -9,68 +9,68 @@ import (
 )
 
 const (
-	_ElectionPath = "/election"
-	_LeaderPath   = "/leader"
-
-	_ElectionHeartbeat = 10 * time.Second
+	__ElectionPath      = "/election"
+	__LeaderPath        = "/leader"
+	__ElectionHeartbeat = 10 * time.Second
 )
 
 // Elector 用于选主
 type Elector struct {
+	cfg          *ElectorCfg
 	conn         *zk.Conn
 	participator string
 	close        chan struct{}
 	stop         chan struct{}
-	cfg          *ElectorCfg
 }
 
 // ElectorCfg 选主配置
 type ElectorCfg struct {
-	ZKEndpoints       []string `json:"zk_endpoints"`
-	ElectionHeartbeat int      `json:"election_heartbeat"`
+	ZkEndpoints []string `json:"zk_endpoints"`
+	Heartbeat   int      `json:"heartbeat"`
 }
 
 // NewElector 返回Elector实例.
 func NewElector(cfg *ElectorCfg) *Elector {
 	return &Elector{
+		cfg:   cfg,
 		close: make(chan struct{}),
 		stop:  make(chan struct{}),
-		cfg:   cfg,
 	}
 }
 
 // ElectLeader 让participator参与选主.
+// TODO: 主节点挂掉后, 从节点
 func (e *Elector) ElectLeader(participator string) {
 	var heartbeat time.Duration
-	if e.cfg.ElectionHeartbeat > 0 {
-		heartbeat = time.Duration(e.cfg.ElectionHeartbeat) * time.Second
+	if e.cfg.Heartbeat > 0 {
+		heartbeat = time.Duration(e.cfg.Heartbeat) * time.Second
 	} else {
-		heartbeat = _ElectionHeartbeat
+		heartbeat = __ElectionHeartbeat
 	}
 
-	conn, sessionEv, err := zk.Connect(e.cfg.ZKEndpoints, heartbeat)
+	conn, sessionEv, err := zk.Connect(e.cfg.ZkEndpoints, heartbeat)
 	if err != nil {
-		log.Fatal().Err(err).Str("[participator]", participator).Msgf("failed to connect to zookeeper cluster (%v)", e.cfg.ZKEndpoints)
+		log.Fatal().Err(err).Str("[participator]", participator).Msgf("failed to connect to zookeeper cluster (%v)", e.cfg.ZkEndpoints)
 	}
 	e.conn = conn
 	e.participator = participator
 
 	e.prepare()
 
-	candidate, err := leaderelection.NewElection(e.conn, _ElectionPath, e.participator)
+	candidate, err := leaderelection.NewElection(e.conn, __ElectionPath, e.participator)
 	if err != nil {
 		log.Fatal().Err(err).Str("[participator]", e.participator).Msg("failed to start election for candidate")
 	}
-
 	go candidate.ElectLeader()
 
+	fromStop := false
 ELECT_LOOP:
 	for {
 		select {
 		case ev, ok := <-sessionEv:
 			{
 				if !ok {
-					log.Error().Str("[participator]", e.participator).Msg("election channel has been closed, election will terminate")
+					log.Warn().Str("[participator]", e.participator).Msg("election channel has been closed, election will terminate")
 					break ELECT_LOOP
 				} else if ev.State == zk.StateExpired {
 					log.Error().Err(zk.ErrSessionExpired).Str("[participator]", e.participator)
@@ -79,20 +79,20 @@ ELECT_LOOP:
 					log.Error().Err(zk.ErrAuthFailed).Str("[participator]", e.participator)
 					break ELECT_LOOP
 				} else if ev.State == zk.StateUnknown {
-					log.Error().Err(zk.ErrUnknown).Str("[participator]", e.participator)
-					break ELECT_LOOP
+					continue
 				} else if ev.State.String() == "unknown state" {
-					break ELECT_LOOP
+					continue
 				}
 				if ev.State == zk.StateDisconnected {
 					log.Warn().Str("[participator]", e.participator).Msgf("zookeeper server (%s) state turns into %s", ev.Server, ev.State.String())
+				} else {
+					log.Info().Str("[participator]", e.participator).Msgf("zookeeper server (%s) state turns into %s", ev.Server, ev.State.String())
 				}
-				log.Info().Str("[participator]", e.participator).Msgf("zookeeper server (%s) state turns into %s", ev.Server, ev.State.String())
 			}
 		case status, ok := <-candidate.Status():
 			{
 				if !ok {
-					log.Error().Str("[participator]", e.participator).Msg("election channel has been closed, election will terminate")
+					log.Warn().Str("[participator]", e.participator).Msg("election channel has been closed, election will terminate")
 					break ELECT_LOOP
 				} else if status.Err != nil {
 					log.Error().Err(status.Err).Str("[participator]", e.participator).Msg("candidate received election status error")
@@ -101,8 +101,8 @@ ELECT_LOOP:
 					log.Info().Str("[participator]", e.participator).Msgf("candidate received status message\n\n%v", status.String())
 					if status.Role == leaderelection.Leader {
 						e.setLeader(e.participator)
-						// TODO: do your stuff
 						log.Info().Str("[participator]", e.participator).Msg("candidate has been promoted to leader")
+						// TODO: do your stuff
 					} else if status.Role == leaderelection.Follower {
 						e.getLeader()
 						// TODO: do your stuff
@@ -112,6 +112,7 @@ ELECT_LOOP:
 		case _, ok := <-e.stop:
 			{
 				if !ok {
+					fromStop = true
 					break ELECT_LOOP
 				}
 			}
@@ -119,32 +120,34 @@ ELECT_LOOP:
 	}
 	candidate.Resign()
 	e.conn.Close()
-	e.close <- struct{}{}
+	if fromStop {
+		e.close <- struct{}{}
+	}
 }
 
 func (e *Elector) prepare() {
-	_, err := e.conn.Create(_ElectionPath, []byte(""), 0, zk.WorldACL(zk.PermAll))
+	_, err := e.conn.Create(__ElectionPath, []byte(""), 0, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNodeExists {
-		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to create znode (%s)", _ElectionPath)
+		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to create znode (%s)", __ElectionPath)
 	}
 
-	_, err = e.conn.Create(_LeaderPath, []byte(""), 0, zk.WorldACL(zk.PermAll))
+	_, err = e.conn.Create(__LeaderPath, []byte(""), 0, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNodeExists {
-		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to create znode (%s)", _ElectionPath)
+		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to create znode (%s)", __LeaderPath)
 	}
 }
 
 func (e *Elector) setLeader(leader string) {
-	_, err := e.conn.Set(_LeaderPath, []byte(leader), -1)
+	_, err := e.conn.Set(__LeaderPath, []byte(leader), -1)
 	if err != nil {
-		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to set value for znode (%s)", _LeaderPath)
+		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to set value for znode (%s)", __LeaderPath)
 	}
 }
 
 func (e *Elector) getLeader() string {
-	v, _, err := e.conn.Get(_LeaderPath)
+	v, _, err := e.conn.Get(__LeaderPath)
 	if err != nil {
-		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to get value from znode (%s)", _LeaderPath)
+		log.Fatal().Err(err).Str("[participator]", e.participator).Msgf("failed to get value from znode (%s)", __LeaderPath)
 	}
 
 	return string(v)
