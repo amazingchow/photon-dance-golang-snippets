@@ -1,4 +1,4 @@
-package microservice
+package stramop
 
 import (
 	"context"

@@ -1,12 +1,12 @@
-package microservice
+package stramop
 
 import (
 	"reflect"
 )
 
-// FanIn 一种信号通知模式.
+// FanIn 信号通知模式, 扇入模式.
 func FanIn(ins ...<-chan interface{}) <-chan interface{} {
-	out := make(chan interface{})
+	out := make(chan interface{}, len(ins))
 	go func() {
 		defer close(out)
 
