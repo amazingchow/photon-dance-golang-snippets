@@ -31,7 +31,11 @@ func TakeN(ctx context.Context, valueStream <-chan interface{}, N int) <-chan in
 			select {
 			case <-ctx.Done():
 				return
-			case hijackStream <- <-valueStream:
+			case v, ok := <-valueStream:
+				if !ok {
+					return
+				}
+				hijackStream <- v
 			}
 		}
 	}()
@@ -56,7 +60,11 @@ func SkipN(ctx context.Context, valueStream <-chan interface{}, N int) <-chan in
 			select {
 			case <-ctx.Done():
 				return
-			case hijackStream <- <-valueStream:
+			case v, ok := <-valueStream:
+				if !ok {
+					return
+				}
+				hijackStream <- v
 			}
 		}
 	}()
@@ -69,13 +77,18 @@ func TakeFn(ctx context.Context, valueStream <-chan interface{}, fn func(v inter
 	go func() {
 		defer close(hijackStream)
 
-		select {
-		case <-ctx.Done():
-			return
-		case v := <-valueStream:
-			{
-				if fn(v) {
-					hijackStream <- v
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case v, ok := <-valueStream:
+				{
+					if !ok {
+						return
+					}
+					if fn(v) {
+						hijackStream <- v
+					}
 				}
 			}
 		}
@@ -89,13 +102,18 @@ func SkipFn(ctx context.Context, valueStream <-chan interface{}, fn func(v inter
 	go func() {
 		defer close(hijackStream)
 
-		select {
-		case <-ctx.Done():
-			return
-		case v := <-valueStream:
-			{
-				if !fn(v) {
-					hijackStream <- v
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case v, ok := <-valueStream:
+				{
+					if !ok {
+						return
+					}
+					if !fn(v) {
+						hijackStream <- v
+					}
 				}
 			}
 		}
@@ -109,15 +127,20 @@ func TakeWhile(ctx context.Context, valueStream <-chan interface{}, fn func(v in
 	go func() {
 		defer close(hijackStream)
 
-		select {
-		case <-ctx.Done():
-			return
-		case v := <-valueStream:
-			{
-				if !fn(v) {
-					return
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case v, ok := <-valueStream:
+				{
+					if !ok {
+						return
+					}
+					if !fn(v) {
+						return
+					}
+					hijackStream <- v
 				}
-				hijackStream <- v
 			}
 		}
 	}()
@@ -131,17 +154,23 @@ func SkipWhile(ctx context.Context, valueStream <-chan interface{}, fn func(v in
 		defer close(hijackStream)
 
 		skip := true
-		select {
-		case <-ctx.Done():
-			return
-		case v := <-valueStream:
-			{
-				if skip && !fn(v) {
-					skip = false
-				}
 
-				if !skip {
-					hijackStream <- v
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case v, ok := <-valueStream:
+				{
+					if !ok {
+						return
+					}
+					if skip && !fn(v) {
+						skip = false
+					}
+
+					if !skip {
+						hijackStream <- v
+					}
 				}
 			}
 		}
