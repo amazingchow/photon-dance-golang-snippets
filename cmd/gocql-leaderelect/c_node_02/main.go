@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	leaderelect "github.com/amazingchow/snippets-for-gopher/gocql-leaderelect"
+	leaderelect "github.com/amazingchow/photon-dance-golang-snippets/gocql-leaderelect"
 )
 
 func main() {

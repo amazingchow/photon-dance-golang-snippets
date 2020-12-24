@@ -1,4 +1,4 @@
-PROJECT                   := github.com/amazingchow/snippets-for-gopher
+PROJECT                   := github.com/amazingchow/photon-dance-golang-snippets
 SRC                       := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 ELECTLEADER_TARGETS       := z_node_01 z_node_02 z_node_03
 GOCQL_ELECTLEADER_TARGETS := c_node_01 c_node_02 c_node_03
