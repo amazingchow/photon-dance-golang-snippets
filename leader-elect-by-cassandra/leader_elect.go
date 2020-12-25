@@ -1,4 +1,4 @@
-package gocqlleaderelect
+package leaderelect
 
 import (
 	"fmt"
@@ -10,12 +10,12 @@ import (
 )
 
 const (
-	_StatusAcquiring = 0
-	_StatusMaster    = 1
-	_StatusResigned  = 2
+	__StatusAcquiring int32 = 0
+	__StatusMaster    int32 = 1
+	__StatusResigned  int32 = 2
 
-	_DBTimeout     = 2 * time.Second
-	_DefaultTTLSec = 10
+	__DefaultTimeout = 2 * time.Second
+	__DefaultTTL     = 10
 )
 
 // Role 节点角色
@@ -23,9 +23,9 @@ type Role int
 
 const (
 	// Follower 从节点
-	Follower Role = 0
+	Follower Role = iota
 	// Leader 主节点
-	Leader = 1
+	Leader
 )
 
 // Status 节点状态
@@ -37,71 +37,65 @@ type Status struct {
 
 // Elector 用于选主
 type Elector struct {
-	cfg     *ElectorCfg
+	cfg *ElectorCfg
+
 	session *gocql.Session
-
-	status int32
-
-	ev   chan Status
-	dead chan bool
+	status  int32
+	ev      chan Status
+	dead    chan struct{}
 }
 
 // ElectorCfg 选主配置
 type ElectorCfg struct {
-	Hosts               []string // cassandra服务节点列表
-	NodeID              string
-	AdvertiseAddress    string
-	HeartbeatTimeoutSec int
-	Keyspace            string
-	TableName           string
-	ResourceName        string
+	CassandraEndpoints []string `json:"cassandra_endpoints"`
+	NodeID             string   `json:"node_id"`
+	AdvertiseAddress   string   `json:"advertise_address"`
+	Heartbeat          int      `json:"heartbeat"`
+	Keyspace           string   `json:"keyspace"`
+	TableName          string   `json:"table_name"`
+	ResourceName       string   `json:"resource_name"`
 }
 
 // NewConfig 生成默认配置.
+// CREATE KEYSPACE IF NOT EXISTS leader_elect_by_cassandra WITH replication = {'class':'SimpleStrategy', 'replication_factor': 3};
 func NewConfig(node string, resource string) *ElectorCfg {
 	return &ElectorCfg{
-		NodeID:              node,
-		HeartbeatTimeoutSec: 10,
-		Keyspace:            "leader_elect_test",
-		TableName:           "leader_elect",
-		ResourceName:        resource,
+		NodeID:       node,
+		Heartbeat:    10,
+		Keyspace:     "leader_elect_by_cassandra",
+		TableName:    "leader_elect",
+		ResourceName: resource,
 	}
 }
 
 // NewElector 返回Elector实例.
-func NewElector(cfg *ElectorCfg) (*Elector, error) {
+func NewElector(cfg *ElectorCfg) *Elector {
 	if cfg.Keyspace == "" {
 		panic("no keyspace")
 	}
 
-	clusterCfg := gocql.NewCluster(cfg.Hosts...)
-	clusterCfg.ConnectTimeout = _DBTimeout
-	clusterCfg.Timeout = _DBTimeout
+	clusterCfg := gocql.NewCluster(cfg.CassandraEndpoints...)
+	clusterCfg.ConnectTimeout = __DefaultTimeout
+	clusterCfg.Timeout = __DefaultTimeout
 	clusterCfg.Keyspace = cfg.Keyspace
 
 	session, err := clusterCfg.CreateSession()
 	if err != nil {
-		return nil, err
+		log.Fatal().Err(err)
 	}
 
 	e := Elector{
 		cfg:     cfg,
 		session: session,
 		ev:      make(chan Status, 1000),
-		dead:    make(chan bool),
+		dead:    make(chan struct{}),
 	}
-	e.createTable(_DefaultTTLSec)
+	err = e.createTable(__DefaultTTL)
+	if err != nil {
+		log.Fatal().Err(err)
+	}
 
-	return &e, nil
-}
-
-func (e *Elector) createTable(ttl int) error {
-	cql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s (
-		resource_name text PRIMARY KEY,
-		leader_id text,
-		value text
-	) with default_time_to_live = %d`, e.cfg.Keyspace, e.cfg.TableName, ttl)
-	return e.session.Query(cql).Exec()
+	return &e
 }
 
 // NewElectorWithSession 返回Elector实例.
@@ -113,8 +107,17 @@ func NewElectorWithSession(cfg *ElectorCfg, session *gocql.Session) *Elector {
 		cfg:     cfg,
 		session: session,
 		ev:      make(chan Status, 1000),
-		dead:    make(chan bool),
+		dead:    make(chan struct{}),
 	}
+}
+
+func (e *Elector) createTable(ttl int) error {
+	cql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s (
+		resource_name text PRIMARY KEY,
+		leader_id text,
+		value text
+	) with default_time_to_live = %d`, e.cfg.Keyspace, e.cfg.TableName, ttl)
+	return e.session.Query(cql).Exec()
 }
 
 // Start 开始选举.
@@ -127,7 +130,7 @@ ELECT_LOOP:
 	for {
 		s := atomic.LoadInt32(&e.status)
 		switch s {
-		case _StatusAcquiring:
+		case __StatusAcquiring:
 			{
 				status, err := e.createLease()
 				if err != nil {
@@ -137,13 +140,13 @@ ELECT_LOOP:
 				}
 				e.ev <- status
 				if status.Role == Leader {
-					if !atomic.CompareAndSwapInt32(&e.status, s, _StatusMaster) {
+					if !atomic.CompareAndSwapInt32(&e.status, s, __StatusMaster) {
 						continue
 					}
 				}
 				e.sleep(status.Role == Leader)
 			}
-		case _StatusMaster:
+		case __StatusMaster:
 			{
 				status, err := e.updateLease()
 				if err != nil {
@@ -152,13 +155,13 @@ ELECT_LOOP:
 				}
 				e.ev <- status
 				if status.Role != Leader {
-					if !atomic.CompareAndSwapInt32(&e.status, s, _StatusAcquiring) {
+					if !atomic.CompareAndSwapInt32(&e.status, s, __StatusAcquiring) {
 						continue
 					}
 				}
 				e.sleep(status.Role == Leader)
 			}
-		case _StatusResigned:
+		case __StatusResigned:
 			{
 				if err := e.removeLease(); err != nil {
 					log.Warn().Err(err).Msg("failed to remove lease")
@@ -175,16 +178,16 @@ ELECT_LOOP:
 }
 
 func (e *Elector) sleep(leader bool) {
-	sec := e.cfg.HeartbeatTimeoutSec
+	sec := e.cfg.Heartbeat
 	if leader {
-		sec = (e.cfg.HeartbeatTimeoutSec - 1) / 2
+		sec = (e.cfg.Heartbeat - 1) / 2
 	}
 
 	deadline := time.Now().Add(time.Duration(sec) * time.Second)
 SLEEP_LOOP:
 	for {
 		s := atomic.LoadInt32(&e.status)
-		if s == _StatusResigned {
+		if s == __StatusResigned {
 			break SLEEP_LOOP
 		}
 		now := time.Now()
@@ -256,7 +259,7 @@ func (e *Elector) NodeID() string {
 
 // Resign 退出选举.
 func (e *Elector) Resign() {
-	atomic.StoreInt32(&e.status, _StatusResigned)
+	atomic.StoreInt32(&e.status, __StatusResigned)
 	<-e.dead
 }
 
