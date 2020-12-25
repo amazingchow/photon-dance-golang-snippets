@@ -3,7 +3,6 @@ package bigmemcache
 import (
 	"encoding/binary"
 	"fmt"
-	"strconv"
 )
 
 func findNearestPowerOf2Num(n uint) uint {
@@ -17,15 +16,11 @@ func findNearestPowerOf2Num(n uint) uint {
 	return k
 }
 
-func featureID2HashKey(id int64) string {
-	return strconv.FormatInt(id, 16)
-}
-
 func (c *BigMemCache) encode(fe *Feature) ([]byte, error) {
 	/*
 		type Feature struct {
 			Version     int32
-			ID          int64
+			UUID        string
 			Meta        []byte
 			Blob        []byte
 			CreatedTime int64
@@ -33,15 +28,11 @@ func (c *BigMemCache) encode(fe *Feature) ([]byte, error) {
 	*/
 	totalLen := 4 + // totalLen
 		4 + // Version
-		8 + // ID
+		2 + len(fe.UUID) +
 		2 + len(fe.Meta) +
 		2 + len(fe.Blob) +
 		8 // CreatedTime
 	raw := make([]byte, totalLen)
-
-	/*
-
-	 */
 
 	pos := 0
 	binary.LittleEndian.PutUint32(raw[pos:], uint32(totalLen))
@@ -50,18 +41,20 @@ func (c *BigMemCache) encode(fe *Feature) ([]byte, error) {
 	binary.LittleEndian.PutUint32(raw[pos:], uint32(fe.Version))
 	pos += 4
 
-	binary.LittleEndian.PutUint64(raw[pos:], uint64(fe.ID))
-	pos += 8
-
 	// 对于[]byte或string类型来说, 先存大小, 再存实际的字节
+	binary.LittleEndian.PutUint16(raw[pos:], uint16(len(fe.UUID)))
+	pos += 2
+	copy(raw[pos:], []byte(fe.UUID))
+	pos += len(fe.UUID)
+
 	binary.LittleEndian.PutUint16(raw[pos:], uint16(len(fe.Meta)))
 	pos += 2
-	copy(raw[pos:], []byte(fe.Meta))
+	copy(raw[pos:], fe.Meta)
 	pos += len(fe.Meta)
 
 	binary.LittleEndian.PutUint16(raw[pos:], uint16(len(fe.Blob)))
 	pos += 2
-	copy(raw[pos:], []byte(fe.Blob))
+	copy(raw[pos:], fe.Blob)
 	pos += len(fe.Blob)
 
 	binary.LittleEndian.PutUint64(raw[pos:], uint64(fe.CreatedTime))
@@ -78,7 +71,7 @@ func (c *BigMemCache) decode(raw []byte) (*Feature, error) {
 	/*
 		type Feature struct {
 			Version     int32
-			ID          int64
+			UUID        string
 			Meta        []byte
 			Blob        []byte
 			CreatedTime int64
@@ -98,8 +91,10 @@ func (c *BigMemCache) decode(raw []byte) (*Feature, error) {
 	fe.Version = int32(binary.LittleEndian.Uint32(raw[pos:]))
 	pos += 4
 
-	fe.ID = int64(binary.LittleEndian.Uint64(raw[pos:]))
-	pos += 8
+	uuidLen := binary.LittleEndian.Uint16(raw[pos:])
+	pos += 2
+	fe.UUID = string(raw[pos : pos+int(uuidLen)])
+	pos += int(uuidLen)
 
 	metaLen := binary.LittleEndian.Uint16(raw[pos:])
 	pos += 2
@@ -108,7 +103,7 @@ func (c *BigMemCache) decode(raw []byte) (*Feature, error) {
 
 	blobLen := binary.LittleEndian.Uint16(raw[pos:])
 	pos += 2
-	fe.Meta = raw[pos : pos+int(blobLen)]
+	fe.Blob = raw[pos : pos+int(blobLen)]
 	pos += int(blobLen)
 
 	fe.CreatedTime = int64(binary.LittleEndian.Uint64(raw[pos:]))
