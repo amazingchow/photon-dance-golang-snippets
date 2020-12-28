@@ -1,4 +1,4 @@
-package batchprocessing
+package batchprocess
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ func defaultBatcherGroupCfg() *BatcherGroupCfg {
 
 type executor struct{}
 
-func (e *executor) run(item *BatchedItem) error {
+func (e *executor) run(item *BatchItem) error {
 	return nil
 }
 
@@ -24,8 +24,8 @@ func TestBatcherGroup(t *testing.T) {
 	testCases := make([]SourceItem, 1024)
 	for i := 0; i < 1024; i++ {
 		testCases[i] = SourceItem{
-			key:  fmt.Sprintf("key-%d", i%64),
-			item: fmt.Sprintf("job-%d", i),
+			key:  fmt.Sprintf("key-%06d", i%64),
+			item: fmt.Sprintf("job-%06d", i),
 		}
 	}
 	e := &executor{}
@@ -38,8 +38,10 @@ func TestBatcherGroup(t *testing.T) {
 		assert.Empty(t, err)
 	}
 
-	time.Sleep(5)
+	time.Sleep(time.Second * time.Duration(5))
 
 	bg.Stat()
 	bg.Close()
+
+	// TODO: FIX ME!!! Totally processed batched requests is 1048!!!
 }
