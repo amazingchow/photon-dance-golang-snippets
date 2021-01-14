@@ -24,7 +24,7 @@ func TestBatcherGroup(t *testing.T) {
 	testCases := make([]SourceItem, 1024)
 	for i := 0; i < 1024; i++ {
 		testCases[i] = SourceItem{
-			key:  fmt.Sprintf("key-%06d", i%64),
+			key:  fmt.Sprintf("key-%06d", i),
 			item: fmt.Sprintf("job-%06d", i),
 		}
 	}

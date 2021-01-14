@@ -14,7 +14,6 @@ const (
 	__DefaultMaxBatchSize    = 16
 	__DefaultFlushTimeMs     = 2000
 	__DefaultSourceQueueSize = 32
-	__DefaultBatchQueueSize  = 32
 
 	__DefaultBatcherPutTimeout   = 10 * time.Second
 	__DefaultBatcherCloseTimeout = 5 * time.Second
@@ -27,7 +26,6 @@ type BatcherGroupCfg struct {
 	MaxBatchSize       int
 	FlushTimeMs        int
 	SourceQueueSize    int
-	BatchQueueSize     int
 }
 
 // SourceItem 待处理的事务单元
@@ -86,9 +84,6 @@ func NewBatcherGroup(cfg *BatcherGroupCfg) BatcherGroup {
 	if cfg.SourceQueueSize == 0 {
 		cfg.SourceQueueSize = __DefaultSourceQueueSize
 	}
-	if cfg.BatchQueueSize == 0 {
-		cfg.BatchQueueSize = __DefaultBatchQueueSize
-	}
 
 	bg := make(BatcherGroup, cfg.BatcherNum)
 	for i := 0; i < cfg.BatcherNum; i++ {
@@ -140,7 +135,7 @@ func NewBatcher(id int, cfg *BatcherGroupCfg) *Batcher {
 		id:                 id,
 		cfg:                cfg,
 		sourceQ:            make(chan SourceItem, cfg.SourceQueueSize),
-		batchQ:             make(chan BatchItem, cfg.BatchQueueSize),
+		batchQ:             make(chan BatchItem, cfg.BatcherConcurrency+1),
 		flushInterval:      time.Duration(cfg.FlushTimeMs) * time.Millisecond,
 		expiredInterval:    time.Duration(cfg.FlushTimeMs*9/10) * time.Millisecond,
 		processedPerThread: make([]int64, cfg.BatcherConcurrency),
@@ -208,22 +203,19 @@ BATCHER_LOOP:
 			}
 			b.appendItemWithFlushOp(batchTable, k, &item)
 		case <-ticker.C:
-			b.flush(batchTable, false /* flush */)
+			// b.flush(batchTable, false /* flush */)
 		}
 	}
 
-	b.flush(batchTable, true /* flush */)
+	// b.flush(batchTable, true /* flush */)
 	// TODO: 在退出前, 如何优雅得处理剩下的事务?
 	close(b.batchQ)
 }
 
 func (b *Batcher) appendItemWithFlushOp(batchTable map[uint32]BatchItem, key uint32, source *SourceItem) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	batch := batchTable[key]
 
-	if len(batch.Items) >= b.cfg.MaxBatchSize {
+	if batch.NextItemIdx >= b.cfg.MaxBatchSize {
 		b.batchQ <- batch
 		batch = BatchItem{
 			CreatedTime: time.Now(),
@@ -238,18 +230,11 @@ func (b *Batcher) appendItemWithFlushOp(batchTable map[uint32]BatchItem, key uin
 }
 
 func (b *Batcher) flush(batchTable map[uint32]BatchItem, flush bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	now := time.Now()
 	for key, batch := range batchTable {
 		if len(batch.Items) > 0 && (flush || batch.CreatedTime.Add(b.expiredInterval).Before(now)) {
 			b.batchQ <- batch
-			batchTable[key] = BatchItem{
-				CreatedTime: time.Now(),
-				Items:       make([]interface{}, b.cfg.MaxBatchSize),
-				NextItemIdx: 0,
-			}
+			delete(batchTable, key)
 		}
 	}
 }
@@ -264,7 +249,7 @@ func (b *Batcher) sink() {
 				if err := b.doBatch(&item); err != nil {
 					log.Error().Err(err).Msgf("batcher-%d does batch job failed", b.id)
 				}
-				b.processedPerThread[idx]++
+				b.processedPerThread[idx] += int64(len(item.Items))
 			}
 		}(i)
 	}
