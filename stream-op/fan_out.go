@@ -1,4 +1,4 @@
-package stramop
+package streamop
 
 import (
 	"sync/atomic"
