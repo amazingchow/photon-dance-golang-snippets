@@ -1,8 +1,11 @@
 // Copyright (c) 2012 The gocql Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-//This file will be the future home for more policies
+
 package gocql
+
+//This file will be the future home for more policies
+
 
 import (
 	"context"
@@ -37,12 +40,6 @@ func (c *cowHostList) get() []*HostInfo {
 	return *l
 }
 
-func (c *cowHostList) set(list []*HostInfo) {
-	c.mu.Lock()
-	c.list.Store(&list)
-	c.mu.Unlock()
-}
-
 // add will add a host if it not already in the list
 func (c *cowHostList) add(host *HostInfo) bool {
 	c.mu.Lock()
@@ -66,33 +63,6 @@ func (c *cowHostList) add(host *HostInfo) bool {
 	c.list.Store(&l)
 	c.mu.Unlock()
 	return true
-}
-
-func (c *cowHostList) update(host *HostInfo) {
-	c.mu.Lock()
-	l := c.get()
-
-	if len(l) == 0 {
-		c.mu.Unlock()
-		return
-	}
-
-	found := false
-	newL := make([]*HostInfo, len(l))
-	for i := range l {
-		if host.Equal(l[i]) {
-			newL[i] = host
-			found = true
-		} else {
-			newL[i] = l[i]
-		}
-	}
-
-	if found {
-		c.list.Store(&newL)
-	}
-
-	c.mu.Unlock()
 }
 
 func (c *cowHostList) remove(ip net.IP) bool {
@@ -304,7 +274,10 @@ type HostSelectionPolicy interface {
 	KeyspaceChanged(KeyspaceUpdateEvent)
 	Init(*Session)
 	IsLocal(host *HostInfo) bool
-	//Pick returns an iteration function over selected hosts
+	// Pick returns an iteration function over selected hosts.
+	// Multiple attempts of a single query execution won't call the returned NextHost function concurrently,
+	// so it's safe to have internal state without additional synchronization as long as every call to Pick returns
+	// a different instance of NextHost.
 	Pick(ExecutableQuery) NextHost
 }
 

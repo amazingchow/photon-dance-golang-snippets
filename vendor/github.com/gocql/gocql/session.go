@@ -62,7 +62,6 @@ type Session struct {
 	schemaEvents *eventDebouncer
 
 	// ring metadata
-	hosts                     []HostInfo
 	useSystemSchema           bool
 	hasAggregatesAndFunctions bool
 
@@ -1102,12 +1101,17 @@ func (q *Query) speculativeExecutionPolicy() SpeculativeExecutionPolicy {
 	return q.spec
 }
 
+// IsIdempotent returns whether the query is marked as idempotent.
+// Non-idempotent query won't be retried.
+// See "Retries and speculative execution" in package docs for more details.
 func (q *Query) IsIdempotent() bool {
 	return q.idempotent
 }
 
 // Idempotent marks the query as being idempotent or not depending on
 // the value.
+// Non-idempotent query won't be retried.
+// See "Retries and speculative execution" in package docs for more details.
 func (q *Query) Idempotent(value bool) *Query {
 	q.idempotent = value
 	return q
@@ -1203,6 +1207,10 @@ func (q *Query) Scan(dest ...interface{}) error {
 // statement containing an IF clause). If the transaction fails because
 // the existing values did not match, the previous values will be stored
 // in dest.
+//
+// As for INSERT .. IF NOT EXISTS, previous values will be returned as if
+// SELECT * FROM. So using ScanCAS with INSERT is inherently prone to
+// column mismatching. Use MapScanCAS to capture them safely.
 func (q *Query) ScanCAS(dest ...interface{}) (applied bool, err error) {
 	q.disableSkipMetadata = true
 	iter := q.Iter()
@@ -1525,6 +1533,8 @@ func (iter *Iter) NumRows() int {
 	return iter.numRows
 }
 
+// nextIter holds state for fetching a single page in an iterator.
+// single page might be attempted multiple times due to retries.
 type nextIter struct {
 	qry   *Query
 	pos   int
@@ -1551,7 +1561,6 @@ type Batch struct {
 	Entries               []BatchEntry
 	Cons                  Consistency
 	routingKey            []byte
-	routingKeyBuffer      []byte
 	CustomPayload         map[string][]byte
 	rt                    RetryPolicy
 	spec                  SpeculativeExecutionPolicy
@@ -1984,7 +1993,6 @@ type ObservedQuery struct {
 	Err error
 
 	// Attempt is the index of attempt at executing this query.
-	// An attempt might be either retry or fetching next page of a query.
 	// The first attempt is number zero and any retries have non-zero attempt number.
 	Attempt int
 }
@@ -2017,7 +2025,6 @@ type ObservedBatch struct {
 	Metrics *hostMetrics
 
 	// Attempt is the index of attempt at executing this query.
-	// An attempt might be either retry or fetching next page of a query.
 	// The first attempt is number zero and any retries have non-zero attempt number.
 	Attempt int
 }
